@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "assert": "^2.1.0",
+    "graphql": "^16.8.1",
+    "sync-request": "^6.1.0"
+  }
+}
