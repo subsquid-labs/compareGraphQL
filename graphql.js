@@ -11,12 +11,12 @@ export function queryEndpoint(url, query) {
 		json: {query}
 	})
 	if (response.statusCode!==200) {
-		throw new Error(`The following query to ${url} has failed: ${query}`)
+		throw new Error(`The following query to ${url} has failed with status ${response.statusCode}: ${query}`)
 	}
-	return response
+	return JSON.parse(response.body.toString())
 }
 
 export function getEndpointSchema(url) {
 	const introspectionResponse = queryEndpoint(url, introspectionQuery)
-	return JSON.parse(introspectionResponse.body.toString()).data.__schema
+	return introspectionResponse.data.__schema
 }

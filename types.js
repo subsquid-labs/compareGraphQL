@@ -11,3 +11,13 @@ export function describeType(typeObj, options = {}) {
 	}
 	return `${typeObj.kind.toLowerCase()} ${describeType(typeObj.ofType, options)}`
 }
+
+export function isScalar(typeDesc) {
+	const scalarTypes = new Set([
+		'String',
+		'Int',
+		'Bytes',
+		'Boolean',
+	])
+	return scalarTypes.has(typeDesc)
+}

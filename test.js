@@ -1,5 +1,6 @@
 import { queryEndpoint, getEndpointSchema } from './graphql.js'
 import { getSquidEntities, getSubgraphEntities, getEntitiesFields } from './entities.js'
+import { isScalar } from './types.js'
 
 function parseSchema(schema, apiFormat) {
 	let entities, nonEntityQueries
@@ -20,7 +21,20 @@ function parseSchema(schema, apiFormat) {
 	}
 }
 
-function compareEntities(subgraphEntities, squidEntities) {
+function compareStrayQueries(subgraphStrayQueries, squidStrayQueries) {
+	const subgraphsq = subgraphStrayQueries.filter(q => q!=='_meta')
+	const squidsq = squidStrayQueries.filter(q => q!=='squidStatus')
+	if (subgraphsq.length>0 || squidsq.length>0) {
+		console.log(`Found queries not related to any entities:\n  squid: ${JSON.stringify(squidsq)}\n  subgraph: ${JSON.stringify(subgraphsq)}`)
+	}
+}
+
+function compareEntities(subgraphEntities, squidEntities, options = {printComparison: true}) {
+	/*
+	 * Options fields:
+	 *   printComparison (default true)
+	 */
+	const safeEntities = []
 	for (let [ename, efields] of subgraphEntities) {
 		const entityIssues = []
 		let entityNotFound = false
@@ -55,7 +69,7 @@ function compareEntities(subgraphEntities, squidEntities) {
 			}
 		}
 
-		if (entityIssues.length>0) {
+		if (options.printComparison && entityIssues.length>0) {
 			console.log(`Issues with entity "${ename}":`)
 			for (let iss of entityIssues) {
 				console.log(`  ${iss}`)
@@ -65,15 +79,28 @@ function compareEntities(subgraphEntities, squidEntities) {
 			}
 			console.log('')
 		}
+		else {
+			safeEntities.push(ename)
+		}
 	}
+	return new Set(safeEntities)
 }
 
-function compareStrayQueries(subgraphStrayQueries, squidStrayQueries) {
-	const subgraphsq = subgraphStrayQueries.filter(q => q!=='_meta')
-	const squidsq = squidStrayQueries.filter(q => q!=='squidStatus')
-	if (subgraphsq.length>0 || squidsq.length>0) {
-		console.log(`Found queries not related to any entities:\n  squid: ${JSON.stringify(squidsq)}\n  subgraph: ${JSON.stringify(subgraphsq)}`)
+function sortEntitiesByTemporalHeuristic(entities, heuristic) {
+	/*
+	 * heuristic must be a list
+	 */
+	const temporalEntities = new Map()
+	const nonTemporalEntities = new Map()
+	for (let [ename, efields] of entities) {
+		if (efields.map(f => f.name).filter(fn => heuristic.includes(fn)).length > 0) {
+			temporalEntities.set(ename, efields)
+		}
+		else {
+			nonTemporalEntities.set(ename, efields)
+		}
 	}
+	return { temporalEntities, nonTemporalEntities }
 }
 
 const subgraphEndpointUrl = 'https://api.thegraph.com/subgraphs/name/ensdomains/ens'
@@ -84,6 +111,36 @@ const { entities: subgraphEntities, nonEntityQueries: subgraphStrayQueries } =
 const { entities: squidEntities, nonEntityQueries: squidStrayQueries } =
 	parseSchema(getEndpointSchema(squidEndpointUrl), 'squid')
 
-compareStrayQueries(subgraphStrayQueries, squidStrayQueries)
-compareEntities(subgraphEntities, squidEntities)
+// compareStrayQueries(subgraphStrayQueries, squidStrayQueries)
+const safeEntitiesNames = compareEntities(subgraphEntities, squidEntities, {printComparison: false})
 
+const safeEntities = new Map([...subgraphEntities.entries()].filter(e => safeEntitiesNames.has(e[0])))
+
+const temporalFields = ['block', 'blockNumber', 'timestamp']
+const { temporalEntities, nonTemporalEntities } = sortEntitiesByTemporalHeuristic(safeEntities, temporalFields)
+
+const numRecords = 5
+for (let [ename, efields] of temporalEntities) {
+	const queryFields = ['id'].concat(efields.filter(f => isScalar(f.type)).map(f => f.name))
+	const orderByField = queryFields.find(f => temporalFields.includes(f))
+	const subgraphQuery = `{ ${ename}s(first: ${numRecords}, orderBy: ${orderByField}, orderDirection: asc) { ${queryFields.join(' ')} } }`
+	const squidQuery = `{ ${ename}s(limit: ${numRecords}, orderBy: ${orderByField}_ASC) { ${queryFields.join(' ')} } }`
+	const subgraphResponse = queryEndpoint(subgraphEndpointUrl, subgraphQuery).data[`${ename}s`]
+	const squidResponse = queryEndpoint(squidEndpointUrl, squidQuery).data[`${ename}s`]
+
+	const issues = []
+	for (let [i, rec] of subgraphResponse.entries()) {
+		for (let f of queryFields) {
+			if (rec[f]!=squidResponse[i][f]) {
+				issues.push(`for record ${i} field ${f} differs: "${rec[f]}" vs "${squidResponse[i][f]}"`)
+			}
+		}
+	}
+
+	if (issues.length>0) {
+		console.log(`Issues with entity ${ename} on queries:\nsubgraph query : ${subgraphQuery}\nsquid query    : ${squidQuery}`)
+		for (let iss of issues) {
+			console.log(`  ${iss}`)
+		}
+	}
+}
