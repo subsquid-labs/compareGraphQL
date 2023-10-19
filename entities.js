@@ -1,3 +1,5 @@
+import { describeType } from './types.js'
+
 export function getSquidEntities(schema) {
 	/*
 	 * A string that has four query methods, suffixed
@@ -65,8 +67,7 @@ export function getEntitiesFields(entities, schema) {
 
 	const objTypes = new Map(schema.types.filter(t => (t.kind==='OBJECT' || t.kind==='INTERFACE') && t.name!=='Query').map(t => [t.name, t]))
 
-//	return new Map([...sQueries.entries()].map(e => [e[0], objTypes.get(e[1].type.ofType.ofType.ofType.name).fields.map(f => { return f.type })]))
-	return new Map([...sQueries.entries()].map(e => [e[0], objTypes.get(e[1].type.ofType.ofType.ofType.name).fields.map(f => { return {name: f.name, type: f.type} })]))
+	return new Map([...sQueries.entries()].map(e => [e[0], objTypes.get(e[1].type.ofType.ofType.ofType.name).fields.map(f => { return {name: f.name, type: describeType(f.type)} })]))
 }
 
 function getQueries(schema) {
