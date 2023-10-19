@@ -57,17 +57,21 @@ export function getSubgraphEntities(schema) {
 	}
 }
 
-export function getEntitiesFields(entities, schema) {
+export function getEntitiesFields(entities, schema, options = {}) {
 	/*
 	 * Field names and types are inferred from the type of
 	 * 's'-suffixed queries
+	 *
+	 * Options fields:
+	 *   ignoreNonNulls - omit non-null statements when describing field types
 	 */
 	const queries = getQueries(schema)
 	const sQueries = new Map(entities.map(e => [e, queries.find(q => q.name===`${e}s`)]))
 
 	const objTypes = new Map(schema.types.filter(t => (t.kind==='OBJECT' || t.kind==='INTERFACE') && t.name!=='Query').map(t => [t.name, t]))
 
-	return new Map([...sQueries.entries()].map(e => [e[0], objTypes.get(e[1].type.ofType.ofType.ofType.name).fields.map(f => { return {name: f.name, type: describeType(f.type)} })]))
+	// careful with the options passed right through here: collisions are possible as the new local options are added
+	return new Map([...sQueries.entries()].map(e => [e[0], objTypes.get(e[1].type.ofType.ofType.ofType.name).fields.map(f => { return {name: f.name, type: describeType(f.type, options)} })]))
 }
 
 function getQueries(schema) {
