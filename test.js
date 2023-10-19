@@ -23,11 +23,13 @@ function parseSchema(schema, apiFormat) {
 function compareEntities(subgraphEntities, squidEntities) {
 	for (let [ename, efields] of subgraphEntities) {
 		const entityIssues = []
+		let entityNotFound = false
 
 		const squidEFields = squidEntities.get(ename)
 		if (!squidEFields) {
 //			console.log(`Subgraph entity "${ename}" not found in the squid`)
 			entityIssues.push(`entity not found in the squid`)
+			entityNotFound = true
 		}
 		else {
 			if (efields.length!==squidEFields.length) {
@@ -58,7 +60,9 @@ function compareEntities(subgraphEntities, squidEntities) {
 			for (let iss of entityIssues) {
 				console.log(`  ${iss}`)
 			}
-			console.log(`Entity fields:\n  in subgraph : ${efields.map(f => f.name)}\n  in squid    : ${squidEFields && squidEFields.map(f => f.name)}`)
+			if (!entityNotFound) {
+				console.log(`Entity fields:\n  in subgraph : ${efields.map(f => f.name)}\n  in squid    : ${squidEFields && squidEFields.map(f => f.name)}`)
+			}
 			console.log('')
 		}
 	}
