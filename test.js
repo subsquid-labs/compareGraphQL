@@ -105,7 +105,15 @@ function sortEntitiesByTemporalHeuristic(entities, heuristic) {
 	return { temporalEntities, nonTemporalEntities }
 }
 
-function testTemporalEntitiesOnAscendingRecords(temporalSubgraphEntities, squidEntities, temporalFields, numRecords, options = {}) {
+function testTemporalEntitiesOnAscendingRecords(
+	temporalSubgraphEntities,
+	squidEntities,
+	subgraphEndpointUrl,
+	squidEndpointUrl,
+	temporalFields,
+	numRecords,
+	options = {}
+) {
 	/*
 	 * Options fields:
 	 *   ignoreIds - contents of the id field will be ignored unless it is the only field
@@ -169,5 +177,53 @@ const safeSubgraphEntities = new Map([...subgraphEntities.entries()].filter(e =>
 const temporalFields = ['block', 'blockNumber', 'timestamp']
 const { temporalEntities: temporalSubgraphEntities, nonTemporalEntities: nonTemporalSubgraphEntities } = sortEntitiesByTemporalHeuristic(safeSubgraphEntities, temporalFields)
 
-const { humanReadableIssuesDescription: temporalEntitiesIssues } = testTemporalEntitiesOnAscendingRecords(temporalSubgraphEntities, squidEntities, temporalFields, 10, {ignoreIds: true})
-if (temporalEntitiesIssues) console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
+//const { humanReadableIssuesDescription: temporalEntitiesIssues } = testTemporalEntitiesOnAscendingRecords(temporalSubgraphEntities, squidEntities, subgraphEndpointUrl, squidEndpointUrl, temporalFields, 10, {ignoreIds: true})
+//if (temporalEntitiesIssues) console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
+
+const numRecords = 50
+const allIssues = []
+for (let [ename, efields] of nonTemporalSubgraphEntities) {
+	const queryFields = ['id'].concat(efields.filter(f => isScalar(f.type)).map(f => f.name))
+
+	const issues = []
+
+	const subgraphSomeRecordsQuery = `{ ${ename}s(first: ${numRecords}) { ${queryFields.join(' ')} } }`
+	const subgraphSomeRecords = queryEndpoint(subgraphEndpointUrl, subgraphSomeRecordsQuery).data[`${ename}s`]
+	if (subgraphSomeRecords===0) {
+		issues.push(`subgraph did not return any records (requested ${numRecords})`)
+		continue
+	}
+
+	const capitalizedSquidEntityName = [...squidEntities.keys()].find(k => k.toLowerCase()==ename.toLowerCase())
+	const subgraphSomeRecordIds = subgraphSomeRecords.map(r => r.id)
+	const squidInclusionQuery = `{ ${capitalizedSquidEntityName}s(where: {id_in: [${subgraphSomeRecordIds.map(id => `"${id}"`).join(', ')}]}) { ${queryFields.join(' ')} } }`
+	const squidIncludedRecords = queryEndpoint(squidEndpointUrl, squidInclusionQuery).data[`${capitalizedSquidEntityName}s`]
+
+	if (subgraphSomeRecords.length!==squidIncludedRecords.length) {
+		issues.push(`number of mirror records found in the squid (${squidIncludedRecords.length}) is different from that of the subgraph (${subgraphSomeRecords.length})`)
+	}
+	const squidIncludedRecordsMap = new Map(squidIncludedRecords.map(r => [r.id, r]))
+	for (let rec of subgraphSomeRecords) {
+		const squidRec = squidIncludedRecordsMap.get(rec.id)
+		if (!squidRec) {
+			issues.push(`record with id "${rec.id}" was not found by the squid`)
+		}
+		else {
+			for (let f of queryFields) {
+				if (rec[f]!=squidRec[f]) {
+					issues.push(`field ${f} differs: "${rec[f]}" vs "${squidRec[f]}"`)
+				}
+			}
+		}
+	}
+
+	if (issues.length>0) {
+		allIssues.push(`Issues with entity ${ename}:\n${issues.join('\n  ')}`)
+	}
+}
+let humanReadableIssuesDescription = null
+if (allIssues.length>0) {
+	humanReadableIssuesDescription = allIssues.join('\n\n')
+}
+
+console.log(humanReadableIssuesDescription)
