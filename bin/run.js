@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { Command } from 'commander'
+
 import { parseSchema } from '../lib/entities.js'
 import { getEndpointSchema } from '../lib/graphql.js'
 import {
@@ -10,8 +12,15 @@ import {
 	testNonTemporalEntitiesOnCrossInclusion
 } from '../lib/test.js'
 
-const subgraphEndpointUrl = 'https://api.thegraph.com/subgraphs/name/ensdomains/ens'
-const squidEndpointUrl = 'https://squid.subsquid.io/yat1ma30-ens-abernatskiy-test/v/v1/graphql'
+const program = new Command()
+program
+	.description('Subsquid vs subgraph API comparator')
+	.argument('<subgraph_url>', 'URL of the subgraph API')
+	.argument('<squid_url>', 'URL of the squid API')
+program.parse()
+
+const subgraphEndpointUrl = program.args[0]
+const squidEndpointUrl = program.args[1]
 
 const { entities: subgraphEntities, nonEntityQueries: subgraphStrayQueries } =
 	parseSchema(getEndpointSchema(subgraphEndpointUrl), 'subgraph')
