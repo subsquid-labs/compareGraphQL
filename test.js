@@ -88,14 +88,16 @@ function compareEntities(subgraphEntities, squidEntities) {
 	}
 }
 
-function sortEntitiesByTemporalHeuristic(entities, heuristic) {
-	/*
-	 * heuristic must be a list
+function separateEntitiesByTemporalFields(entities, options = {}) {
+	/**
+	 * Options fields:
+	 *   temporalFields - an array of field names to consider temporal, default ['block', 'blockNumber', 'timestamp']
 	 */
+	const temporalFields = options.temporalFields ?? ['block', 'blockNumber', 'timestamp']
 	const temporalEntities = new Map()
 	const nonTemporalEntities = new Map()
 	for (let [ename, efields] of entities) {
-		if (efields.map(f => f.name).filter(fn => heuristic.includes(fn)).length > 0) {
+		if (efields.map(f => f.name).filter(fn => temporalFields.includes(fn)).length > 0) {
 			temporalEntities.set(ename, efields)
 		}
 		else {
@@ -110,17 +112,20 @@ function testTemporalEntitiesOnAscendingRecords(
 	squidEntities,
 	subgraphEndpointUrl,
 	squidEndpointUrl,
-	temporalFields,
-	numRecords,
 	options = {}
 ) {
-	/*
+	/**
 	 * Options fields:
-	 *   ignoreIds - contents of the id field will be ignored unless it is the only field
+	 *   numRecords - the number of records to compare, default 10
+	 *   ignoreIds - if true, contents of the id field will be ignored unless it is the only field, default false
+	 *   temporalFields - an array of field names to consider temporal, default ['block', 'blockNumber', 'timestamp']
 	 */
+	const ignoreIds = !!options.ignoreIds
+	const numRecords = options.numRecords ?? 10
+	const temporalFields = options.temporalFields ?? ['block', 'blockNumber', 'timestamp']
+
 	const allIssues = []
 	for (let [ename, efields] of temporalSubgraphEntities) {
-		let ignoreIds = !!options.ignoreIds
 
 		const queryFields = ['id'].concat(efields.filter(f => isScalar(f.type)).map(f => f.name))
 		if (ignoreIds && queryFields.length<2) {
@@ -158,6 +163,83 @@ function testTemporalEntitiesOnAscendingRecords(
 	}
 }
 
+function testNonTemporalEntitiesOnCrossInclusion(
+	nonTemporalSubgraphEntities,
+	squidEntities,
+	subgraphEndpointUrl,
+	squidEndpointUrl,
+	options = {}
+) {
+	/**
+	 * Options fields:
+	 *   numRecords - the number of records to compare
+	 */
+	const numRecords = options.numRecords ?? 10
+
+	function checkRecordsInclusion(entityName, queryFields, issues, direction) {
+		const squidEntityName = [...squidEntities.keys()].find(k => k.toLowerCase()==entityName.toLowerCase())
+		let someRecordsQuery =
+			direction==='subgraphToSquid' ?
+			`{ ${entityName}s(first: ${numRecords}) { ${queryFields.join(' ')} } }` :
+			`{ ${squidEntityName}s(limit: ${numRecords}) { ${queryFields.join(' ')} } }`
+		const someRecords =
+			direction==='subgraphToSquid' ?
+				queryEndpoint(subgraphEndpointUrl, someRecordsQuery).data[`${entityName}s`] :
+				queryEndpoint(squidEndpointUrl, someRecordsQuery).data[`${squidEntityName}s`]
+		if (someRecords===0) {
+			issues.push(`subgraph did not return any records (requested ${numRecords})`)
+			return
+		}
+
+		const inclusionQuery =
+			direction==='subgraphToSquid' ?
+			`{ ${squidEntityName}s(where: {id_in: [${someRecords.map(r => `"${r.id}"`).join(', ')}]}) { ${queryFields.join(' ')} } }` :
+			`{ ${entityName}s(where: {id_in: [${someRecords.map(r => `"${r.id}"`).join(', ')}]}) { ${queryFields.join(' ')} } }`
+		const includedRecords =
+			direction==='subgraphToSquid' ?
+			queryEndpoint(squidEndpointUrl, inclusionQuery).data[`${squidEntityName}s`] :
+			queryEndpoint(subgraphEndpointUrl, inclusionQuery).data[`${squidEntityName}s`]
+
+		const sampleSource = direction==='subgraphToSquid' ? 'subgraph' : 'squid'
+		const testDestination = direction==='subgraphToSquid' ? 'squid' : 'subgraph'
+		if (someRecords.length!==includedRecords.length) {
+			issues.push(`number of same id records found in ${testDestination} (${includedRecords.length}) is different from the size of the sample retrieved from ${sampleSource} (${someRecords.length})`)
+		}
+		const includedRecordsMap = new Map(includedRecords.map(r => [r.id, r]))
+		for (let rec of someRecords) {
+			const destRec = includedRecordsMap.get(rec.id)
+			if (!destRec) {
+				issues.push(`record "${rec.id}" was not found by the ${testDestination}`)
+			}
+			else {
+				for (let f of queryFields) {
+					if (rec[f]!=destRec[f]) {
+						issues.push(`field ${f} from ${sampleSource} differs in record "${rec.id}": "${rec[f]}" vs "${destRec[f]}"`)
+					}
+				}
+			}
+		}
+	}
+
+	const allIssues = []
+	for (let [ename, efields] of nonTemporalSubgraphEntities) {
+		const queryFields = ['id'].concat(efields.filter(f => isScalar(f.type)).map(f => f.name))
+
+		const issues = []
+		checkRecordsInclusion(ename, queryFields, issues, 'subgraphToSquid')
+		checkRecordsInclusion(ename, queryFields, issues, 'squidToSubgraph')
+
+		if (issues.length>0) {
+			allIssues.push(`Issues with entity ${ename}:\n${issues.join('\n  ')}`)
+		}
+	}
+	let humanReadableIssuesDescription = null
+	if (allIssues.length>0) {
+		humanReadableIssuesDescription = allIssues.join('\n\n')
+	}
+	return { humanReadableIssuesDescription }
+}
+
 const subgraphEndpointUrl = 'https://api.thegraph.com/subgraphs/name/ensdomains/ens'
 const squidEndpointUrl = 'https://squid.subsquid.io/yat1ma30-ens-abernatskiy-test/v/v1/graphql'
 
@@ -166,64 +248,54 @@ const { entities: subgraphEntities, nonEntityQueries: subgraphStrayQueries } =
 const { entities: squidEntities, nonEntityQueries: squidStrayQueries } =
 	parseSchema(getEndpointSchema(squidEndpointUrl), 'squid')
 
-const { humanReadableComparison: strayQueriesComparison } = compareStrayQueries(subgraphStrayQueries, squidStrayQueries)
-if (strayQueriesComparison) console.log(`${strayQueriesComparison}\n\n---------------------\n`)
+const {
+	humanReadableComparison: strayQueriesComparison
+} = compareStrayQueries(subgraphStrayQueries, squidStrayQueries)
+if (strayQueriesComparison)
+	console.log(`${strayQueriesComparison}\n\n---------------------\n`)
+else
+	console.log('Did not find any queries not associated with entities')
 
-const { humanReadableIssuesDescription: schemaIssues, safeEntities: safeEntitiesNames} = compareEntities(subgraphEntities, squidEntities)
-if (schemaIssues) console.log(`${schemaIssues}\n\n---------------------\n`)
+const {
+	humanReadableIssuesDescription: schemaIssues,
+	safeEntities: safeEntitiesNames
+} = compareEntities(subgraphEntities, squidEntities)
+if (schemaIssues)
+	console.log(`${schemaIssues}\n\n---------------------\n`)
+else
+	console.log('No issues found during the schema comparison')
 
 const safeSubgraphEntities = new Map([...subgraphEntities.entries()].filter(e => safeEntitiesNames.has(e[0])))
 
-const temporalFields = ['block', 'blockNumber', 'timestamp']
-const { temporalEntities: temporalSubgraphEntities, nonTemporalEntities: nonTemporalSubgraphEntities } = sortEntitiesByTemporalHeuristic(safeSubgraphEntities, temporalFields)
+const {
+	temporalEntities: temporalSubgraphEntities,
+	nonTemporalEntities: nonTemporalSubgraphEntities
+} = separateEntitiesByTemporalFields(safeSubgraphEntities)
 
-//const { humanReadableIssuesDescription: temporalEntitiesIssues } = testTemporalEntitiesOnAscendingRecords(temporalSubgraphEntities, squidEntities, subgraphEndpointUrl, squidEndpointUrl, temporalFields, 10, {ignoreIds: true})
-//if (temporalEntitiesIssues) console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
+const {
+	humanReadableIssuesDescription: temporalEntitiesIssues
+} = testTemporalEntitiesOnAscendingRecords(
+	temporalSubgraphEntities,
+	squidEntities,
+	subgraphEndpointUrl,
+	squidEndpointUrl,
+	{ignoreIds: true, numRecords: 10}
+)
+if (temporalEntitiesIssues)
+	console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
+else
+	console.log('No issues found with temporal entities')
 
-const numRecords = 50
-const allIssues = []
-for (let [ename, efields] of nonTemporalSubgraphEntities) {
-	const queryFields = ['id'].concat(efields.filter(f => isScalar(f.type)).map(f => f.name))
-
-	const issues = []
-
-	const subgraphSomeRecordsQuery = `{ ${ename}s(first: ${numRecords}) { ${queryFields.join(' ')} } }`
-	const subgraphSomeRecords = queryEndpoint(subgraphEndpointUrl, subgraphSomeRecordsQuery).data[`${ename}s`]
-	if (subgraphSomeRecords===0) {
-		issues.push(`subgraph did not return any records (requested ${numRecords})`)
-		continue
-	}
-
-	const capitalizedSquidEntityName = [...squidEntities.keys()].find(k => k.toLowerCase()==ename.toLowerCase())
-	const subgraphSomeRecordIds = subgraphSomeRecords.map(r => r.id)
-	const squidInclusionQuery = `{ ${capitalizedSquidEntityName}s(where: {id_in: [${subgraphSomeRecordIds.map(id => `"${id}"`).join(', ')}]}) { ${queryFields.join(' ')} } }`
-	const squidIncludedRecords = queryEndpoint(squidEndpointUrl, squidInclusionQuery).data[`${capitalizedSquidEntityName}s`]
-
-	if (subgraphSomeRecords.length!==squidIncludedRecords.length) {
-		issues.push(`number of mirror records found in the squid (${squidIncludedRecords.length}) is different from that of the subgraph (${subgraphSomeRecords.length})`)
-	}
-	const squidIncludedRecordsMap = new Map(squidIncludedRecords.map(r => [r.id, r]))
-	for (let rec of subgraphSomeRecords) {
-		const squidRec = squidIncludedRecordsMap.get(rec.id)
-		if (!squidRec) {
-			issues.push(`record with id "${rec.id}" was not found by the squid`)
-		}
-		else {
-			for (let f of queryFields) {
-				if (rec[f]!=squidRec[f]) {
-					issues.push(`field ${f} differs: "${rec[f]}" vs "${squidRec[f]}"`)
-				}
-			}
-		}
-	}
-
-	if (issues.length>0) {
-		allIssues.push(`Issues with entity ${ename}:\n${issues.join('\n  ')}`)
-	}
-}
-let humanReadableIssuesDescription = null
-if (allIssues.length>0) {
-	humanReadableIssuesDescription = allIssues.join('\n\n')
-}
-
-console.log(humanReadableIssuesDescription)
+const {
+	humanReadableIssuesDescription: nonTemporalEntitiesIssues
+} = testNonTemporalEntitiesOnCrossInclusion(
+	nonTemporalSubgraphEntities,
+	squidEntities,
+	subgraphEndpointUrl,
+	squidEndpointUrl,
+	{numRecords: 10}
+)
+if (nonTemporalEntitiesIssues)
+	console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
+else
+	console.log('No issues found with non-temporal entities')
