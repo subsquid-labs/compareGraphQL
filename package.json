@@ -5,5 +5,29 @@
     "commander": "^11.1.0",
     "graphql": "^16.8.1",
     "sync-request": "^6.1.0"
-  }
+  },
+  "name": "compare-squid-to-subgraph",
+  "version": "1.0.0",
+  "description": "Test migrated Subsquid GraphQL APIs against the original subgraphs",
+  "main": "bin/run.js",
+  "bin": {
+    "compare-squid-to-subgraph": "bin/run.js"
+  },
+  "directories": {
+    "lib": "lib"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abernatskiy/compareGraphQL.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/abernatskiy/compareGraphQL/issues"
+  },
+  "homepage": "https://github.com/abernatskiy/compareGraphQL#readme"
 }
