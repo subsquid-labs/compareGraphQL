@@ -18,13 +18,15 @@ program
 	.argument('<subgraph_url>', 'URL of the subgraph API')
 	.argument('<squid_url>', 'URL of the squid API')
 	.option('-r, --repeats <number>', 'number of records to retrieve in each test', '10')
-	.option('--ignore-ids', 'ignore IDs in the temporal test')
+	.option('--temporal-ignore-ids', 'ignore IDs in the temporal test')
+	.option('--non-temporal-lower-case-ids', 'lowercase IDs when doing the non-temporal test')
 program.parse()
 
 const subgraphEndpointUrl = program.args[0]
 const squidEndpointUrl = program.args[1]
 const numRecords = parseInt(program.opts().repeats)
-const ignoreIds = !!program.opts().ignoreIds
+const temporalIgnoreIds = !!program.opts().temporalIgnoreIds
+const nonTemporalLowerCaseIds = !!program.opts().nonTemporalLowerCaseIds
 
 const { entities: subgraphEntities, nonEntityQueries: subgraphStrayQueries } =
 	parseSchema(getEndpointSchema(subgraphEndpointUrl), 'subgraph')
@@ -62,7 +64,7 @@ const {
 	squidEntities,
 	subgraphEndpointUrl,
 	squidEndpointUrl,
-	{ignoreIds, numRecords}
+	{ignoreIds: temporalIgnoreIds, numRecords}
 )
 if (temporalEntitiesIssues)
 	console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
@@ -76,7 +78,7 @@ const {
 	squidEntities,
 	subgraphEndpointUrl,
 	squidEndpointUrl,
-	{numRecords}
+	{numRecords, lowerCaseIds: nonTemporalLowerCaseIds}
 )
 if (nonTemporalEntitiesIssues)
 	console.log(`${nonTemporalEntitiesIssues}\n\n---------------------\n`)
