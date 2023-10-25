@@ -79,6 +79,6 @@ const {
 	{numRecords}
 )
 if (nonTemporalEntitiesIssues)
-	console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
+	console.log(`${nonTemporalEntitiesIssues}\n\n---------------------\n`)
 else
 	console.log('No issues found with non-temporal entities')
