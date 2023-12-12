@@ -57,6 +57,8 @@ const {
 	nonTemporalEntities: nonTemporalSubgraphEntities
 } = separateEntitiesByTemporalFields(safeSubgraphEntities)
 
+console.log(`Detected ${temporalSubgraphEntities.size} temporal entities and ${nonTemporalSubgraphEntities.size} non-temporal entities`)
+
 const {
 	humanReadableIssuesDescription: temporalEntitiesIssues
 } = testTemporalEntitiesOnAscendingRecords(
