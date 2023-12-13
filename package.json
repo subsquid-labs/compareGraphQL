@@ -11,7 +11,8 @@
   "description": "Test migrated Subsquid GraphQL APIs against the original subgraphs",
   "main": "bin/run.js",
   "bin": {
-    "compare-squid-to-subgraph": "bin/squid-to-subgraph.js"
+    "compare-squid-to-subgraph": "bin/squid-to-subgraph.js",
+    "compare-subgraph-to-subgraph": "bin/subgraph-to-subgraph.js"
   },
   "directories": {
     "lib": "lib"
