@@ -35,7 +35,10 @@ const { entities: squidEntities, nonEntityQueries: squidStrayQueries } =
 
 const {
 	humanReadableComparison: strayQueriesComparison
-} = compareStrayQueries(subgraphStrayQueries, squidStrayQueries)
+} = compareStrayQueries(
+	{ strayQueries: subgraphStrayQueries, kind: 'subgraph' },
+	{ strayQueries: squidStrayQueries, kind: 'squid'}
+)
 if (strayQueriesComparison)
 	console.log(`${strayQueriesComparison}\n\n---------------------\n`)
 else
@@ -44,7 +47,10 @@ else
 const {
 	humanReadableIssuesDescription: schemaIssues,
 	safeEntities: safeEntitiesNames
-} = compareEntities(subgraphEntities, squidEntities)
+} = compareEntities(
+	{ entities: subgraphEntities, kind: 'subgraph' },
+	{ entities: squidEntities, kind: 'squid' }
+)
 if (schemaIssues)
 	console.log(`${schemaIssues}\n\n---------------------\n`)
 else
@@ -53,20 +59,19 @@ else
 const safeSubgraphEntities = new Map([...subgraphEntities.entries()].filter(e => safeEntitiesNames.has(e[0])))
 
 const {
-	temporalEntities: temporalSubgraphEntities,
-	nonTemporalEntities: nonTemporalSubgraphEntities
+	temporalEntitiesNames: temporalSubgraphEntitiesNames,
+	nonTemporalEntitiesNames: nonTemporalSubgraphEntitiesNames
 } = separateEntitiesByTemporalFields(safeSubgraphEntities)
 
-console.log(`Detected ${temporalSubgraphEntities.size} temporal entities and ${nonTemporalSubgraphEntities.size} non-temporal entities`)
+console.log(`Detected ${temporalSubgraphEntitiesNames.length} temporal entities and ${nonTemporalSubgraphEntitiesNames.length} non-temporal entities`)
 
 const {
 	humanReadableIssuesDescription: temporalEntitiesIssues
 } = testTemporalEntitiesOnAscendingRecords(
-	temporalSubgraphEntities,
-	squidEntities,
-	subgraphEndpointUrl,
-	squidEndpointUrl,
-	{ignoreIds: temporalIgnoreIds, numRecords}
+	temporalSubgraphEntitiesNames,
+	{ entities: subgraphEntities, apiUrl: subgraphEndpointUrl, kind: 'subgraph' },
+	{ entities: squidEntities, apiUrl: squidEndpointUrl, kind: 'squid' },
+	{ ignoreIds: temporalIgnoreIds, numRecords }
 )
 if (temporalEntitiesIssues)
 	console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
@@ -76,11 +81,10 @@ else
 const {
 	humanReadableIssuesDescription: nonTemporalEntitiesIssues
 } = testNonTemporalEntitiesOnCrossInclusion(
-	nonTemporalSubgraphEntities,
-	squidEntities,
-	subgraphEndpointUrl,
-	squidEndpointUrl,
-	{numRecords, lowerCaseIds: nonTemporalLowerCaseIds}
+	nonTemporalSubgraphEntitiesNames,
+	{ entities: subgraphEntities, apiUrl: subgraphEndpointUrl, kind: 'subgraph' },
+	{ entities: squidEntities, apiUrl: squidEndpointUrl, kind: 'squid' },
+	{ numRecords, lowerCaseIds: nonTemporalLowerCaseIds }
 )
 if (nonTemporalEntitiesIssues)
 	console.log(`${nonTemporalEntitiesIssues}\n\n---------------------\n`)
