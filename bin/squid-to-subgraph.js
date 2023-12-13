@@ -1,16 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander'
-
-import { parseSchema } from '../lib/entities.js'
-import { getEndpointSchema } from '../lib/graphql.js'
-import {
-	compareStrayQueries,
-	compareEntities,
-	separateEntitiesByTemporalFields,
-	testTemporalEntitiesOnAscendingRecords,
-	testNonTemporalEntitiesOnCrossInclusion
-} from '../lib/test.js'
+import { standardComparison } from '../lib/tests/standard-comparison.js'
 
 const program = new Command()
 program
@@ -28,65 +19,8 @@ const numRecords = parseInt(program.opts().repeats)
 const temporalIgnoreIds = !!program.opts().temporalIgnoreIds
 const nonTemporalLowerCaseIds = !!program.opts().nonTemporalLowerCaseIds
 
-const { entities: subgraphEntities, nonEntityQueries: subgraphStrayQueries } =
-	parseSchema(getEndpointSchema(subgraphEndpointUrl), 'subgraph')
-const { entities: squidEntities, nonEntityQueries: squidStrayQueries } =
-	parseSchema(getEndpointSchema(squidEndpointUrl), 'squid')
-
-const {
-	humanReadableComparison: strayQueriesComparison
-} = compareStrayQueries(
-	{ strayQueries: subgraphStrayQueries, kind: 'subgraph' },
-	{ strayQueries: squidStrayQueries, kind: 'squid'}
+standardComparison(
+  { apiUrl: subgraphEndpointUrl, kind: 'subgraph' },
+  { apiUrl: squidEndpointUrl, kind: 'squid' },
+  { numRecords, temporalIgnoreIds, nonTemporalLowerCaseIds }
 )
-if (strayQueriesComparison)
-	console.log(`${strayQueriesComparison}\n\n---------------------\n`)
-else
-	console.log('Did not find any queries not associated with entities')
-
-const {
-	humanReadableIssuesDescription: schemaIssues,
-	safeEntities: safeEntitiesNames
-} = compareEntities(
-	{ entities: subgraphEntities, kind: 'subgraph' },
-	{ entities: squidEntities, kind: 'squid' }
-)
-if (schemaIssues)
-	console.log(`${schemaIssues}\n\n---------------------\n`)
-else
-	console.log('No issues found during the schema comparison')
-
-const safeSubgraphEntities = new Map([...subgraphEntities.entries()].filter(e => safeEntitiesNames.has(e[0])))
-
-const {
-	temporalEntitiesNames: temporalSubgraphEntitiesNames,
-	nonTemporalEntitiesNames: nonTemporalSubgraphEntitiesNames
-} = separateEntitiesByTemporalFields(safeSubgraphEntities)
-
-console.log(`Detected ${temporalSubgraphEntitiesNames.length} temporal entities and ${nonTemporalSubgraphEntitiesNames.length} non-temporal entities`)
-
-const {
-	humanReadableIssuesDescription: temporalEntitiesIssues
-} = testTemporalEntitiesOnAscendingRecords(
-	temporalSubgraphEntitiesNames,
-	{ entities: subgraphEntities, apiUrl: subgraphEndpointUrl, kind: 'subgraph' },
-	{ entities: squidEntities, apiUrl: squidEndpointUrl, kind: 'squid' },
-	{ ignoreIds: temporalIgnoreIds, numRecords }
-)
-if (temporalEntitiesIssues)
-	console.log(`${temporalEntitiesIssues}\n\n---------------------\n`)
-else
-	console.log('No issues found with temporal entities')
-
-const {
-	humanReadableIssuesDescription: nonTemporalEntitiesIssues
-} = testNonTemporalEntitiesOnCrossInclusion(
-	nonTemporalSubgraphEntitiesNames,
-	{ entities: subgraphEntities, apiUrl: subgraphEndpointUrl, kind: 'subgraph' },
-	{ entities: squidEntities, apiUrl: squidEndpointUrl, kind: 'squid' },
-	{ numRecords, lowerCaseIds: nonTemporalLowerCaseIds }
-)
-if (nonTemporalEntitiesIssues)
-	console.log(`${nonTemporalEntitiesIssues}\n\n---------------------\n`)
-else
-	console.log('No issues found with non-temporal entities')
