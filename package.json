@@ -12,7 +12,8 @@
   "main": "bin/run.js",
   "bin": {
     "compare-squid-to-subgraph": "bin/squid-to-subgraph.js",
-    "compare-subgraph-to-subgraph": "bin/subgraph-to-subgraph.js"
+    "compare-subgraph-to-subgraph": "bin/subgraph-to-subgraph.js",
+    "compare-squid-to-squid": "bin/squid-to-squid.js"
   },
   "directories": {
     "lib": "lib"
